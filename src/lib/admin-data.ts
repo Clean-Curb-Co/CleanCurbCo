@@ -7,9 +7,17 @@ import type {
   ActivityEventRow,
   ContactMessageRow,
   CustomerRequestRow,
+  NotificationEventRow,
+  PaymentRow,
   ProfileRow,
   ReferralRow,
+  RouteBreakRow,
+  RouteDayRow,
+  RouteStopRow,
+  ServiceChecklistRow,
   ServiceAddressRow,
+  ServiceEventRow,
+  ServicePhotoRow,
   ServiceVisitRow,
 } from "@/types/database";
 
@@ -23,6 +31,14 @@ export type AdminContext = {
   profiles: ProfileRow[];
   addresses: ServiceAddressRow[];
   visits: ServiceVisitRow[];
+  routeDays: RouteDayRow[];
+  routeStops: RouteStopRow[];
+  checklists: ServiceChecklistRow[];
+  photos: ServicePhotoRow[];
+  breaks: RouteBreakRow[];
+  serviceEvents: ServiceEventRow[];
+  notificationEvents: NotificationEventRow[];
+  payments: PaymentRow[];
 };
 
 export async function getAdminContext(nextPath = "/admin"): Promise<AdminContext> {
@@ -39,6 +55,14 @@ export async function getAdminContext(nextPath = "/admin"): Promise<AdminContext
       profiles: [],
       addresses: [],
       visits: [],
+      routeDays: [],
+      routeStops: [],
+      checklists: [],
+      photos: [],
+      breaks: [],
+      serviceEvents: [],
+      notificationEvents: [],
+      payments: [],
     };
   }
 
@@ -52,6 +76,14 @@ export async function getAdminContext(nextPath = "/admin"): Promise<AdminContext
     profilesResult,
     addressesResult,
     visitsResult,
+    routeDaysResult,
+    routeStopsResult,
+    checklistsResult,
+    photosResult,
+    breaksResult,
+    serviceEventsResult,
+    notificationEventsResult,
+    paymentsResult,
   ] =
     await Promise.all([
       admin
@@ -86,6 +118,38 @@ export async function getAdminContext(nextPath = "/admin"): Promise<AdminContext
         .from("service_visits")
         .select("*")
         .order("route_day", { ascending: false }),
+      admin
+        .from("route_days")
+        .select("*")
+        .order("route_date", { ascending: false }),
+      admin
+        .from("route_stops")
+        .select("*")
+        .order("stop_order", { ascending: true }),
+      admin
+        .from("service_checklists")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      admin
+        .from("service_photos")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      admin
+        .from("route_breaks")
+        .select("*")
+        .order("started_at", { ascending: false }),
+      admin
+        .from("service_events")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      admin
+        .from("notification_events")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      admin
+        .from("payments")
+        .select("*")
+        .order("created_at", { ascending: false }),
     ]);
 
   return {
@@ -98,5 +162,13 @@ export async function getAdminContext(nextPath = "/admin"): Promise<AdminContext
     profiles: profilesResult.data ?? [],
     addresses: addressesResult.data ?? [],
     visits: visitsResult.data ?? [],
+    routeDays: routeDaysResult.data ?? [],
+    routeStops: routeStopsResult.data ?? [],
+    checklists: checklistsResult.data ?? [],
+    photos: photosResult.data ?? [],
+    breaks: breaksResult.data ?? [],
+    serviceEvents: serviceEventsResult.data ?? [],
+    notificationEvents: notificationEventsResult.data ?? [],
+    payments: paymentsResult.data ?? [],
   };
 }

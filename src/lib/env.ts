@@ -40,3 +40,17 @@ export function isResendConfigured() {
   const { apiKey, from } = getResendEnv();
   return Boolean(apiKey && from);
 }
+
+export function getStripeEnv() {
+  return {
+    secretKey: process.env.STRIPE_SECRET_KEY ?? "",
+    publishableKey: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "",
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
+    currency: (process.env.STRIPE_CURRENCY ?? "usd").toLowerCase(),
+  };
+}
+
+export function isStripeConfigured() {
+  const { secretKey, publishableKey } = getStripeEnv();
+  return Boolean(secretKey && publishableKey);
+}

@@ -6,6 +6,7 @@ import {
   updatePaymentStatusAction,
 } from "@/app/admin/actions";
 import { AdminFilterBar } from "@/components/admin-filter-bar";
+import { AdminPaymentCreator } from "@/components/admin-payment-creator";
 import { CopyButton } from "@/components/copy-button";
 import { AdminShell } from "@/components/shells/admin-shell";
 import {
@@ -17,7 +18,7 @@ import {
 import { bookingCustomerName, includesSearch, uniqueValues } from "@/lib/admin-operations";
 import { getAdminContext } from "@/lib/admin-data";
 import { formatFrequency } from "@/lib/pricing";
-import type { BookingRow } from "@/types/database";
+import type { BookingRow, PaymentRow } from "@/types/database";
 
 export const metadata: Metadata = {
   title: "Admin Payments",
@@ -51,7 +52,11 @@ export default async function AdminPaymentsPage({
 }: AdminPaymentsPageProps) {
   const params = await searchParams;
   const context = await getAdminContext("/admin/payments");
-  const filteredBookings = filterAndSortBookings(context.bookings, params);
+  const filteredBookings = filterAndSortBookings(
+    context.bookings,
+    context.payments,
+    params,
+  );
 
   return (
     <AdminShell title="Payments" auth={context.auth}>
@@ -61,11 +66,13 @@ export default async function AdminPaymentsPage({
             <p className="section-kicker">Payments</p>
             <h1>Payment links and status.</h1>
             <p className="muted">
-              Manual payment links stay here until Stripe, Square, or recurring
-              billing is connected.
+              Manage manual payment links, Stripe Checkout records, payment
+              emails, and unpaid completed service.
             </p>
           </div>
-          <span className="status-badge">{context.bookings.length} total</span>
+          <span className="status-badge">
+            {context.bookings.length} bookings | {context.payments.length} payments
+          </span>
         </div>
 
         <AdminFilterBar
@@ -127,9 +134,11 @@ export default async function AdminPaymentsPage({
               value: params.method,
               options: [
                 { label: "Any method", value: "" },
-                ...uniqueValues(context.bookings.map((booking) => booking.payment_method)).map(
-                  (method) => ({ label: method, value: method }),
-                ),
+                ...uniqueValues([
+                  ...context.bookings.map((booking) => booking.payment_method),
+                  ...context.bookings.map((booking) => booking.payment_provider),
+                  ...context.payments.map((payment) => payment.provider),
+                ]).map((method) => ({ label: method, value: method })),
               ],
             },
             {
@@ -159,7 +168,14 @@ export default async function AdminPaymentsPage({
 
         {filteredBookings.length ? (
           <div className="admin-card-list">
-            {filteredBookings.map((booking) => (
+            {filteredBookings.map((booking) => {
+              const bookingPayments = context.payments.filter(
+                (payment) => payment.booking_id === booking.id,
+              );
+              const latestPayment = bookingPayments[0] ?? null;
+              const checkoutUrl = latestPayment?.checkout_url ?? booking.payment_link ?? "";
+
+              return (
               <form
                 action={updateBookingAdminAction}
                 className="admin-edit-card"
@@ -212,7 +228,45 @@ export default async function AdminPaymentsPage({
                     <span>Route day</span>
                     <strong>{booking.confirmed_route_day ?? "Pending"}</strong>
                   </div>
+                  <div>
+                    <span>Stripe checkout</span>
+                    <strong>
+                      {latestPayment?.stripe_checkout_session_id ??
+                        booking.stripe_checkout_session_id ??
+                        "None"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Stripe payment intent</span>
+                    <strong>
+                      {latestPayment?.stripe_payment_intent_id ??
+                        booking.stripe_payment_intent_id ??
+                        "None"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Stripe subscription</span>
+                    <strong>
+                      {latestPayment?.stripe_subscription_id ??
+                        booking.stripe_subscription_id ??
+                        "None"}
+                    </strong>
+                  </div>
                 </div>
+
+                <AdminPaymentCreator
+                  addOns={booking.add_ons}
+                  binCount={booking.bin_count}
+                  bookingId={booking.id}
+                  customerId={booking.customer_id}
+                  defaultAmount={booking.estimated_price}
+                  defaultDescription={`Clean Curb Co. service at ${booking.street_address}`}
+                  frequency={booking.frequency}
+                  paymentId={latestPayment?.id}
+                  serviceVisitId={
+                    context.visits.find((visit) => visit.booking_id === booking.id)?.id
+                  }
+                />
 
                 <div className="form-grid">
                   <label className="field">
@@ -227,7 +281,7 @@ export default async function AdminPaymentsPage({
                   </label>
                   <label className="field">
                     <span>Payment link</span>
-                    <input name="paymentLink" defaultValue={booking.payment_link ?? ""} />
+                    <input name="paymentLink" defaultValue={checkoutUrl} />
                   </label>
                   <label className="field">
                     <span>Payment method</span>
@@ -256,7 +310,7 @@ export default async function AdminPaymentsPage({
                   <button className="button button-dark" type="submit">
                     Save Payment
                   </button>
-                  <CopyButton value={booking.payment_link ?? ""} label="Copy Link" />
+                  <CopyButton value={checkoutUrl} label="Copy Link" />
                   <button
                     className="button button-outline"
                     formAction={updatePaymentStatusAction}
@@ -305,7 +359,8 @@ export default async function AdminPaymentsPage({
                   </Link>
                 </div>
               </form>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <p>No payment records match those filters.</p>
@@ -317,6 +372,7 @@ export default async function AdminPaymentsPage({
 
 function filterAndSortBookings(
   bookings: BookingRow[],
+  payments: PaymentRow[],
   params: Record<string, string | undefined>,
 ) {
   const query = params.q?.trim() ?? "";
@@ -325,7 +381,9 @@ function filterAndSortBookings(
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
   return bookings
-    .filter((booking) =>
+    .filter((booking) => {
+      const linkedPayments = payments.filter((payment) => payment.booking_id === booking.id);
+      return (
       includesSearch(
         [
           bookingCustomerName(booking),
@@ -335,18 +393,50 @@ function filterAndSortBookings(
           booking.neighborhood,
           booking.payment_link,
           booking.id,
+          booking.stripe_checkout_session_id,
+          booking.stripe_payment_intent_id,
+          booking.stripe_subscription_id,
+          ...linkedPayments.flatMap((payment) => [
+            payment.checkout_url,
+            payment.id,
+            payment.stripe_checkout_session_id,
+            payment.stripe_payment_intent_id,
+            payment.stripe_subscription_id,
+            payment.payment_type,
+            payment.provider,
+          ]),
         ],
         query,
-      ),
-    )
-    .filter((booking) => !params.payment || booking.payment_status === params.payment)
+      )
+      );
+    })
+    .filter((booking) => {
+      if (!params.payment) return true;
+      const linkedPayments = payments.filter((payment) => payment.booking_id === booking.id);
+      return (
+        booking.payment_status === params.payment ||
+        linkedPayments.some((payment) => payment.status === params.payment)
+      );
+    })
     .filter((booking) => !params.frequency || booking.frequency === params.frequency)
     .filter((booking) => !params.neighborhood || booking.neighborhood === params.neighborhood)
     .filter((booking) => !params.bookingStatus || booking.status === params.bookingStatus)
-    .filter((booking) => !params.method || booking.payment_method === params.method)
     .filter((booking) => {
-      if (params.link === "has_link") return Boolean(booking.payment_link);
-      if (params.link === "missing_link") return !booking.payment_link;
+      if (!params.method) return true;
+      const linkedPayments = payments.filter((payment) => payment.booking_id === booking.id);
+      return (
+        booking.payment_method === params.method ||
+        booking.payment_provider === params.method ||
+        linkedPayments.some((payment) => payment.provider === params.method)
+      );
+    })
+    .filter((booking) => {
+      const linkedPayments = payments.filter((payment) => payment.booking_id === booking.id);
+      const hasLink =
+        Boolean(booking.payment_link) ||
+        linkedPayments.some((payment) => Boolean(payment.checkout_url));
+      if (params.link === "has_link") return hasLink;
+      if (params.link === "missing_link") return !hasLink;
       return true;
     })
     .filter((booking) => {

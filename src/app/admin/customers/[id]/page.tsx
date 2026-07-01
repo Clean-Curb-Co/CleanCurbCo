@@ -52,6 +52,20 @@ export default async function CustomerDetailPage({
   );
   const primaryAddress = getPrimaryAddress(profile.id, context.addresses);
   const visits = context.visits.filter((visit) => visit.customer_id === profile.id);
+  const payments = context.payments.filter((payment) => payment.customer_id === profile.id);
+  const photos = context.photos.filter((photo) => photo.customer_id === profile.id);
+  const routeStops = context.routeStops.filter((stop) =>
+    bookings.some((booking) => booking.id === stop.booking_id),
+  );
+  const checklists = context.checklists.filter((checklist) =>
+    visits.some((visit) => visit.id === checklist.service_visit_id),
+  );
+  const serviceEvents = context.serviceEvents.filter((event) =>
+    bookings.some((booking) => booking.id === event.booking_id),
+  );
+  const notificationEvents = context.notificationEvents.filter(
+    (event) => event.recipient_profile_id === profile.id,
+  );
   const activity = context.activity.filter(
     (event) =>
       event.customer_id === profile.id ||
@@ -217,13 +231,22 @@ export default async function CustomerDetailPage({
           </DetailPanel>
 
           <DetailPanel title="Payment history" empty="No payment records.">
-            {bookings.map((booking) => (
-              <article className="mini-record" key={booking.id}>
-                <strong>${booking.estimated_price}</strong>
-                <span>{humanizeStatus(booking.payment_status)}</span>
-                <span>{booking.payment_method ?? "No method recorded"}</span>
-              </article>
-            ))}
+            {(payments.length
+              ? payments.map((payment) => (
+                  <article className="mini-record" key={payment.id}>
+                    <strong>${payment.amount}</strong>
+                    <span>{humanizeStatus(payment.status)}</span>
+                    <span>{payment.provider}</span>
+                    {payment.checkout_url ? <a href={payment.checkout_url}>Checkout link</a> : null}
+                  </article>
+                ))
+              : bookings.map((booking) => (
+                  <article className="mini-record" key={booking.id}>
+                    <strong>${booking.estimated_price}</strong>
+                    <span>{humanizeStatus(booking.payment_status)}</span>
+                    <span>{booking.payment_method ?? "No method recorded"}</span>
+                  </article>
+                )))}
           </DetailPanel>
 
           <DetailPanel title="Service visits" empty="No service visits yet.">
@@ -231,9 +254,49 @@ export default async function CustomerDetailPage({
               <article className="mini-record" key={visit.id}>
                 <strong>{visit.route_day ?? "Route day pending"}</strong>
                 <span>{humanizeStatus(visit.status)}</span>
+                <span>
+                  {visit.completed_at
+                    ? `Completed ${formatDateTime(visit.completed_at)}`
+                    : "Not completed"}
+                </span>
                 <span>{visit.technician_notes ?? "No technician notes"}</span>
+                <Link href={`/field/stops/${visit.id}`}>Open field stop</Link>
               </article>
             ))}
+          </DetailPanel>
+
+          <DetailPanel title="Route stops" empty="No route stops linked.">
+            {routeStops.map((stop) => (
+              <article className="mini-record" key={stop.id}>
+                <strong>Stop #{stop.stop_order}</strong>
+                <span>{humanizeStatus(stop.status)}</span>
+                <span>{stop.technician_notes ?? "No route notes"}</span>
+              </article>
+            ))}
+          </DetailPanel>
+
+          <DetailPanel title="Checklist and photos" empty="No field proof yet.">
+            {visits.map((visit) => {
+              const checklist = checklists.find(
+                (item) => item.service_visit_id === visit.id,
+              );
+              const visitPhotos = photos.filter(
+                (photo) => photo.service_visit_id === visit.id,
+              );
+              return (
+                <article className="mini-record" key={visit.id}>
+                  <strong>{visit.route_day ?? "Visit"}</strong>
+                  <span>
+                    Checklist:{" "}
+                    {checklist?.service_completed ? "completed" : "not complete"}
+                  </span>
+                  <span>
+                    {visitPhotos.filter((photo) => photo.photo_type === "before").length} before /{" "}
+                    {visitPhotos.filter((photo) => photo.photo_type === "after").length} after
+                  </span>
+                </article>
+              );
+            })}
           </DetailPanel>
 
           <DetailPanel title="Customer requests" empty="No requests yet.">
@@ -261,6 +324,26 @@ export default async function CustomerDetailPage({
               <article className="mini-record" key={event.id}>
                 <strong>{humanizeStatus(event.event_type)}</strong>
                 <span>{event.message}</span>
+                <span>{formatDateTime(event.created_at)}</span>
+              </article>
+            ))}
+          </DetailPanel>
+
+          <DetailPanel title="Service events" empty="No service events yet.">
+            {serviceEvents.slice(0, 12).map((event) => (
+              <article className="mini-record" key={event.id}>
+                <strong>{humanizeStatus(event.event_type)}</strong>
+                <span>{event.message}</span>
+                <span>{formatDateTime(event.created_at)}</span>
+              </article>
+            ))}
+          </DetailPanel>
+
+          <DetailPanel title="Notifications" empty="No notifications yet.">
+            {notificationEvents.slice(0, 12).map((event) => (
+              <article className="mini-record" key={event.id}>
+                <strong>{humanizeStatus(event.template_key)}</strong>
+                <span>{humanizeStatus(event.status)}</span>
                 <span>{formatDateTime(event.created_at)}</span>
               </article>
             ))}

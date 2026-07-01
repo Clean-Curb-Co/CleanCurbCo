@@ -47,8 +47,11 @@ export const validPaymentStatuses: readonly PaymentStatus[] = [
 export const validRequestTypes: readonly RequestType[] = [
   "pause_service",
   "cancel_service",
+  "reschedule_service",
   "change_frequency",
   "update_address",
+  "add_service",
+  "drop_service",
   "request_add_on",
   "billing_question",
   "general_help",

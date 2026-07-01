@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { isSupabaseConfigured } from "@/lib/env";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { isAdminRole } from "@/lib/supabase/roles";
+import { isAdminRole, isFieldRole } from "@/lib/supabase/roles";
 import type { ProfileRow } from "@/types/database";
 
 type AuthUnavailable = {
@@ -124,3 +124,20 @@ export async function requireAdmin(nextPath = "/admin"): Promise<AuthResult> {
 }
 
 export const requireOwnerOrAdmin = requireAdmin;
+
+export async function requireField(nextPath = "/field/today"): Promise<AuthResult> {
+  const auth = await getCurrentProfile();
+
+  if (auth.status === "forbidden") {
+    redirect(`/login?next=${encodeURIComponent(nextPath)}`);
+  }
+
+  if (auth.status === "ok" && !isFieldRole(auth.profile.role)) {
+    return {
+      status: "forbidden",
+      message: "This field app is reserved for Clean Curb Co. technicians.",
+    };
+  }
+
+  return auth;
+}

@@ -1,4 +1,4 @@
-export type AppRole = "customer" | "admin" | "owner";
+export type AppRole = "customer" | "technician" | "admin" | "owner";
 export type ServiceFrequency =
   | "one_time"
   | "monthly"
@@ -7,11 +7,18 @@ export type ServiceFrequency =
 export type RequestType =
   | "pause_service"
   | "cancel_service"
+  | "reschedule_service"
   | "change_frequency"
   | "update_address"
+  | "add_service"
+  | "drop_service"
   | "request_add_on"
   | "billing_question"
   | "general_help";
+export type PolicyWindow =
+  | "standard"
+  | "within_48_hours"
+  | "within_24_hours";
 export type CustomerRequestStatus =
   | "new"
   | "reviewing"
@@ -24,6 +31,36 @@ export type ReferralStatus =
   | "qualified"
   | "reward_ready"
   | "reward_sent"
+  | "cancelled";
+
+export type RouteDayStatus = "planned" | "active" | "completed" | "cancelled";
+export type FieldStopStatus =
+  | "scheduled"
+  | "on_the_way"
+  | "arrived"
+  | "in_progress"
+  | "completed"
+  | "skipped"
+  | "needs_follow_up"
+  | "rescheduled"
+  | "cancelled";
+export type PhotoType = "before" | "after" | "issue" | "other";
+export type BreakReason =
+  | "lunch"
+  | "bathroom"
+  | "tank_empty"
+  | "tank_refill"
+  | "equipment_issue"
+  | "fuel_stop"
+  | "weather_pause"
+  | "customer_delay"
+  | "other";
+export type PaymentStatus =
+  | "not_sent"
+  | "pending"
+  | "paid"
+  | "failed"
+  | "refunded"
   | "cancelled";
 
 export type BookingRow = {
@@ -76,8 +113,17 @@ export type BookingRow = {
   payment_link: string | null;
   payment_provider: string | null;
   payment_reference: string | null;
+  stripe_checkout_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  stripe_subscription_id: string | null;
   referral_code: string | null;
   referred_by_profile_id: string | null;
+  last_customer_change_request_at: string | null;
+  cancellation_policy_status:
+    | "none"
+    | "fee_may_apply"
+    | "full_charge_may_apply"
+    | null;
 };
 
 export type ProfileRow = {
@@ -94,6 +140,7 @@ export type ProfileRow = {
   preferred_contact_method: "email" | "phone" | "sms" | null;
   referral_code: string | null;
   referred_by_profile_id: string | null;
+  stripe_customer_id: string | null;
   internal_notes: string | null;
 };
 
@@ -122,19 +169,138 @@ export type ServiceVisitRow = {
   route_day: string | null;
   arrival_window_start: string | null;
   arrival_window_end: string | null;
-  status:
-    | "scheduled"
-    | "on_the_way"
-    | "arrived"
-    | "in_progress"
-    | "completed"
-    | "skipped"
-    | "rescheduled"
-    | "cancelled";
+  status: FieldStopStatus;
   before_photo_urls: string[] | null;
   after_photo_urls: string[] | null;
   technician_notes: string | null;
   completed_at: string | null;
+};
+
+export type RouteDayRow = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  route_date: string;
+  route_name: string | null;
+  service_area: string | null;
+  status: RouteDayStatus;
+  assigned_technician_id: string | null;
+  notes: string | null;
+};
+
+export type RouteStopRow = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  route_day_id: string | null;
+  booking_id: string | null;
+  service_visit_id: string | null;
+  stop_order: number;
+  status: FieldStopStatus;
+  started_at: string | null;
+  completed_at: string | null;
+  technician_notes: string | null;
+  issue_flags: string[];
+};
+
+export type ServiceChecklistRow = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  service_visit_id: string | null;
+  route_stop_id: string | null;
+  arrived_at_property: boolean;
+  bins_located: boolean;
+  before_photos_taken: boolean;
+  loose_debris_removed: boolean;
+  cleaner_applied: boolean;
+  bins_pressure_washed: boolean;
+  scrubbed_if_needed: boolean;
+  sanitized: boolean;
+  deodorized: boolean;
+  trash_pad_cleaned: boolean;
+  add_ons_completed: boolean;
+  after_photos_taken: boolean;
+  bins_returned_neatly: boolean;
+  work_area_checked: boolean;
+  service_completed: boolean;
+  completed_by: string | null;
+  completed_at: string | null;
+};
+
+export type ServicePhotoRow = {
+  id: string;
+  created_at: string;
+  service_visit_id: string | null;
+  route_stop_id: string | null;
+  booking_id: string | null;
+  customer_id: string | null;
+  photo_type: PhotoType;
+  storage_bucket: string;
+  storage_path: string;
+  uploaded_by: string | null;
+  caption: string | null;
+  is_customer_visible: boolean;
+};
+
+export type RouteBreakRow = {
+  id: string;
+  created_at: string;
+  route_day_id: string | null;
+  technician_id: string | null;
+  reason: BreakReason;
+  started_at: string;
+  ended_at: string | null;
+  notes: string | null;
+};
+
+export type ServiceEventRow = {
+  id: string;
+  created_at: string;
+  actor_profile_id: string | null;
+  booking_id: string | null;
+  service_visit_id: string | null;
+  route_stop_id: string | null;
+  event_type: string;
+  message: string;
+  metadata: Record<string, unknown>;
+};
+
+export type NotificationEventRow = {
+  id: string;
+  created_at: string;
+  recipient_profile_id: string | null;
+  recipient_email: string | null;
+  recipient_phone: string | null;
+  channel: "email" | "sms" | "manual";
+  template_key: string;
+  status: "queued" | "sent" | "failed" | "skipped";
+  related_booking_id: string | null;
+  related_visit_id: string | null;
+  related_route_stop_id: string | null;
+  resend_id: string | null;
+  error_message: string | null;
+};
+
+export type PaymentRow = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  customer_id: string | null;
+  booking_id: string | null;
+  service_visit_id: string | null;
+  amount: number;
+  currency: string;
+  status: PaymentStatus;
+  provider: string;
+  stripe_customer_id: string | null;
+  stripe_checkout_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  stripe_subscription_id: string | null;
+  checkout_url: string | null;
+  description: string | null;
+  payment_type: string | null;
+  metadata: Record<string, unknown>;
 };
 
 export type ContactMessageRow = {
@@ -157,9 +323,19 @@ export type CustomerRequestRow = {
   booking_id: string | null;
   request_type: RequestType;
   status: CustomerRequestStatus;
+  policy_window: PolicyWindow;
+  policy_acknowledged: boolean;
+  policy_acknowledged_at: string | null;
+  policy_acknowledged_name: string | null;
+  original_estimated_price: number | null;
+  cancellation_fee: number | null;
+  full_charge_applies: boolean;
   requested_frequency: ServiceFrequency | null;
   requested_pause_start: string | null;
   requested_pause_end: string | null;
+  requested_route_day: string | null;
+  requested_add_ons: string[];
+  requested_removed_add_ons: string[];
   message: string | null;
   admin_notes: string | null;
 };
@@ -313,6 +489,57 @@ export type Database = {
         Insert: Partial<ActivityEventRow> &
           Pick<ActivityEventRow, "event_type" | "message">;
         Update: Partial<ActivityEventRow>;
+        Relationships: [];
+      };
+      route_days: {
+        Row: RouteDayRow;
+        Insert: Partial<RouteDayRow> & Pick<RouteDayRow, "route_date">;
+        Update: Partial<RouteDayRow>;
+        Relationships: [];
+      };
+      route_stops: {
+        Row: RouteStopRow;
+        Insert: Partial<RouteStopRow>;
+        Update: Partial<RouteStopRow>;
+        Relationships: [];
+      };
+      service_checklists: {
+        Row: ServiceChecklistRow;
+        Insert: Partial<ServiceChecklistRow>;
+        Update: Partial<ServiceChecklistRow>;
+        Relationships: [];
+      };
+      service_photos: {
+        Row: ServicePhotoRow;
+        Insert: Partial<ServicePhotoRow> &
+          Pick<ServicePhotoRow, "photo_type" | "storage_path">;
+        Update: Partial<ServicePhotoRow>;
+        Relationships: [];
+      };
+      route_breaks: {
+        Row: RouteBreakRow;
+        Insert: Partial<RouteBreakRow> & Pick<RouteBreakRow, "reason">;
+        Update: Partial<RouteBreakRow>;
+        Relationships: [];
+      };
+      service_events: {
+        Row: ServiceEventRow;
+        Insert: Partial<ServiceEventRow> &
+          Pick<ServiceEventRow, "event_type" | "message">;
+        Update: Partial<ServiceEventRow>;
+        Relationships: [];
+      };
+      notification_events: {
+        Row: NotificationEventRow;
+        Insert: Partial<NotificationEventRow> &
+          Pick<NotificationEventRow, "channel" | "template_key">;
+        Update: Partial<NotificationEventRow>;
+        Relationships: [];
+      };
+      payments: {
+        Row: PaymentRow;
+        Insert: Partial<PaymentRow> & Pick<PaymentRow, "amount">;
+        Update: Partial<PaymentRow>;
         Relationships: [];
       };
     };

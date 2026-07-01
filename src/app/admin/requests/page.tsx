@@ -5,11 +5,17 @@ import { AdminFilterBar } from "@/components/admin-filter-bar";
 import { AdminShell } from "@/components/shells/admin-shell";
 import {
   humanizeStatus,
+  validBookingStatuses,
   validCustomerRequestStatuses,
+  validPaymentStatuses,
   validRequestTypes,
 } from "@/lib/booking-utils";
 import { getAdminContext } from "@/lib/admin-data";
 import { fullName, includesSearch, uniqueValues } from "@/lib/admin-operations";
+import {
+  policyWindowLabels,
+  requestTypeLabels,
+} from "@/lib/service-policy";
 import type {
   BookingRow,
   CustomerRequestRow,
@@ -29,6 +35,21 @@ const dateOptions = [
   { label: "Any date", value: "" },
   { label: "Created this week", value: "week" },
   { label: "Created this month", value: "month" },
+  { label: "Within 24 hours", value: "within_24_hours" },
+  { label: "Within 48 hours", value: "within_48_hours" },
+];
+
+const policyOptions = [
+  { label: "Any policy window", value: "" },
+  { label: policyWindowLabels.standard, value: "standard" },
+  { label: policyWindowLabels.within_48_hours, value: "within_48_hours" },
+  { label: policyWindowLabels.within_24_hours, value: "within_24_hours" },
+];
+
+const acknowledgmentOptions = [
+  { label: "Any acknowledgment", value: "" },
+  { label: "Acknowledged", value: "acknowledged" },
+  { label: "Not acknowledged", value: "not_acknowledged" },
 ];
 
 export default async function AdminRequestsPage({
@@ -43,6 +64,7 @@ export default async function AdminRequestsPage({
     context.addresses,
     params,
   );
+  const routeDayOptions = getRouteDayOptions(context.requests, context.bookings);
 
   return (
     <AdminShell title="Requests" auth={context.auth}>
@@ -52,8 +74,8 @@ export default async function AdminRequestsPage({
             <p className="section-kicker">Customer Requests</p>
             <h1>Review service changes before they happen.</h1>
             <p className="muted">
-              Pause, cancel, frequency, address, add-on, billing, and account
-              help requests land here.
+              Timing windows, typed acknowledgments, original prices, and
+              possible charges are preserved here.
             </p>
           </div>
           <span className="status-badge">{context.requests.length} total</span>
@@ -84,10 +106,22 @@ export default async function AdminRequestsPage({
               options: [
                 { label: "Any request type", value: "" },
                 ...validRequestTypes.map((type) => ({
-                  label: humanizeStatus(type),
+                  label: requestTypeLabels[type] ?? humanizeStatus(type),
                   value: type,
                 })),
               ],
+            },
+            {
+              name: "policy",
+              label: "Policy window",
+              value: params.policy,
+              options: policyOptions,
+            },
+            {
+              name: "ack",
+              label: "Acknowledgment",
+              value: params.ack,
+              options: acknowledgmentOptions,
             },
             {
               name: "neighborhood",
@@ -99,6 +133,12 @@ export default async function AdminRequestsPage({
                   (neighborhood) => ({ label: neighborhood, value: neighborhood }),
                 ),
               ],
+            },
+            {
+              name: "routeDay",
+              label: "Route day",
+              value: params.routeDay,
+              options: [{ label: "Any route day", value: "" }, ...routeDayOptions],
             },
             { name: "date", label: "Date", value: params.date, options: dateOptions },
           ]}
@@ -116,6 +156,7 @@ export default async function AdminRequestsPage({
               const address = context.addresses.find(
                 (item) => item.customer_id === request.customer_id,
               );
+              const scheduledDate = getScheduledDate(request, booking);
 
               return (
                 <form
@@ -126,7 +167,7 @@ export default async function AdminRequestsPage({
                   <input type="hidden" name="requestId" value={request.id} />
                   <div className="admin-row-heading">
                     <div>
-                      <h2>{humanizeStatus(request.request_type)}</h2>
+                      <h2>{requestTypeLabels[request.request_type]}</h2>
                       <p className="muted">
                         {profile ? fullName(profile) : "Unlinked customer"} |{" "}
                         {profile?.email ?? booking?.email ?? "No email"}
@@ -137,16 +178,58 @@ export default async function AdminRequestsPage({
                           "Neighborhood pending"}
                       </p>
                     </div>
-                    <span className={`status-badge status-${request.status}`}>
-                      {humanizeStatus(request.status)}
-                    </span>
+                    <div className="status-stack">
+                      <span className={`status-badge status-${request.status}`}>
+                        {humanizeStatus(request.status)}
+                      </span>
+                      <span className={`status-badge status-${request.policy_window}`}>
+                        {policyWindowLabels[request.policy_window]}
+                      </span>
+                      {request.cancellation_fee !== null ? (
+                        <span className="status-badge status-fee_may_apply">
+                          Cancellation Fee May Apply
+                        </span>
+                      ) : null}
+                      {request.full_charge_applies ? (
+                        <span className="status-badge status-full_charge_may_apply">
+                          Full Charge May Apply
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div className="admin-data-grid">
                     <div>
-                      <span>Created</span>
-                      <strong>{formatDate(request.created_at)}</strong>
+                      <span>Scheduled date</span>
+                      <strong>{scheduledDate ?? "Not scheduled"}</strong>
                     </div>
+                    <div>
+                      <span>Acknowledgment</span>
+                      <strong>
+                        {request.policy_acknowledged
+                          ? request.policy_acknowledged_name ?? "Completed"
+                          : "Not completed"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Original estimate</span>
+                      <strong>
+                        {request.original_estimated_price === null
+                          ? "Not recorded"
+                          : `$${request.original_estimated_price}`}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Cancellation fee</span>
+                      <strong>
+                        {request.cancellation_fee === null
+                          ? "None"
+                          : `$${request.cancellation_fee}`}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div className="admin-data-grid">
                     <div>
                       <span>Requested frequency</span>
                       <strong>
@@ -156,18 +239,16 @@ export default async function AdminRequestsPage({
                       </strong>
                     </div>
                     <div>
-                      <span>Pause window</span>
-                      <strong>
-                        {request.requested_pause_start
-                          ? `${request.requested_pause_start} to ${
-                              request.requested_pause_end ?? "open"
-                            }`
-                          : "None"}
-                      </strong>
+                      <span>Requested route day</span>
+                      <strong>{request.requested_route_day ?? "None"}</strong>
                     </div>
                     <div>
-                      <span>Booking</span>
-                      <strong>{booking?.id.slice(0, 8) ?? "No booking"}</strong>
+                      <span>Add services</span>
+                      <strong>{formatList(request.requested_add_ons)}</strong>
+                    </div>
+                    <div>
+                      <span>Drop services</span>
+                      <strong>{formatList(request.requested_removed_add_ons)}</strong>
                     </div>
                   </div>
 
@@ -175,7 +256,7 @@ export default async function AdminRequestsPage({
 
                   <div className="form-grid">
                     <label className="field">
-                      <span>Status</span>
+                      <span>Request status</span>
                       <select name="status" defaultValue={request.status}>
                         {validCustomerRequestStatuses.map((status) => (
                           <option value={status} key={status}>
@@ -184,6 +265,33 @@ export default async function AdminRequestsPage({
                         ))}
                       </select>
                     </label>
+                    {booking ? (
+                      <>
+                        <label className="field">
+                          <span>Booking status</span>
+                          <select name="bookingStatus" defaultValue={booking.status}>
+                            {validBookingStatuses.map((status) => (
+                              <option value={status} key={status}>
+                                {humanizeStatus(status)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="field">
+                          <span>Payment status</span>
+                          <select
+                            name="paymentStatus"
+                            defaultValue={booking.payment_status}
+                          >
+                            {validPaymentStatuses.map((status) => (
+                              <option value={status} key={status}>
+                                {humanizeStatus(status)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </>
+                    ) : null}
                     <label className="choice-card">
                       <input type="checkbox" name="sendUpdateEmail" />
                       <span>Send request update email</span>
@@ -201,12 +309,23 @@ export default async function AdminRequestsPage({
                     <button className="button button-dark" type="submit">
                       Save Request
                     </button>
+                    {["reviewing", "approved", "completed", "denied"].map((status) => (
+                      <button
+                        className="button button-outline"
+                        key={status}
+                        name="status"
+                        type="submit"
+                        value={status}
+                      >
+                        Mark {humanizeStatus(status)}
+                      </button>
+                    ))}
                     {profile ? (
                       <Link
                         className="button button-outline"
                         href={`/admin/customers/${profile.id}`}
                       >
-                        View Customer
+                        Open Customer
                       </Link>
                     ) : null}
                     {booking ? (
@@ -214,7 +333,7 @@ export default async function AdminRequestsPage({
                         className="button button-outline"
                         href={`/admin/bookings?q=${booking.id}`}
                       >
-                        View Booking
+                        Open Booking
                       </Link>
                     ) : null}
                   </div>
@@ -255,12 +374,19 @@ function filterRequests(
           request.message,
           request.id,
           request.booking_id,
+          request.policy_acknowledged_name,
         ],
         query,
       );
     })
     .filter((request) => !params.status || request.status === params.status)
     .filter((request) => !params.type || request.request_type === params.type)
+    .filter((request) => !params.policy || request.policy_window === params.policy)
+    .filter((request) => {
+      if (params.ack === "acknowledged") return request.policy_acknowledged;
+      if (params.ack === "not_acknowledged") return !request.policy_acknowledged;
+      return true;
+    })
     .filter((request) => {
       if (!params.neighborhood) return true;
       const address = addresses.find((item) => item.customer_id === request.customer_id);
@@ -271,16 +397,41 @@ function filterRequests(
       );
     })
     .filter((request) => {
+      if (!params.routeDay) return true;
+      const booking = bookings.find((item) => item.id === request.booking_id);
+      return getScheduledDate(request, booking) === params.routeDay;
+    })
+    .filter((request) => {
       if (params.date === "week") return new Date(request.created_at) >= weekAgo;
       if (params.date === "month") return new Date(request.created_at) >= monthStart;
+      if (params.date === "within_24_hours") {
+        return request.policy_window === "within_24_hours";
+      }
+      if (params.date === "within_48_hours") {
+        return ["within_48_hours", "within_24_hours"].includes(request.policy_window);
+      }
       return true;
     });
 }
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(value));
+function getRouteDayOptions(requests: CustomerRequestRow[], bookings: BookingRow[]) {
+  return uniqueValues(
+    requests.map((request) => {
+      const booking = bookings.find((item) => item.id === request.booking_id);
+      return getScheduledDate(request, booking);
+    }),
+  ).map((routeDay) => ({ label: routeDay, value: routeDay }));
+}
+
+function getScheduledDate(request: CustomerRequestRow, booking?: BookingRow) {
+  return (
+    booking?.confirmed_route_day ??
+    request.requested_route_day ??
+    booking?.requested_date ??
+    null
+  );
+}
+
+function formatList(values: string[] | null) {
+  return values?.length ? values.join(", ") : "None";
 }

@@ -19,25 +19,42 @@ export default async function PortalBookingsPage() {
         <h1>Your booking requests.</h1>
         {context.bookings.length ? (
           <div className="data-table">
-            {context.bookings.map((booking) => (
-              <article className="data-row" key={booking.id}>
-                <div>
-                  <strong>{formatFrequency(booking.frequency)}</strong>
+            {context.bookings.map((booking) => {
+              const visit = context.visits.find((item) => item.booking_id === booking.id);
+              const checklist = context.checklists.find(
+                (item) => item.service_visit_id === visit?.id,
+              );
+              return (
+                <article className="data-row" key={booking.id}>
+                  <div>
+                    <strong>{formatFrequency(booking.frequency)}</strong>
+                    <span>
+                      {booking.bin_count}{" "}
+                      {booking.bin_count === 1 ? "bin" : "bins"} at{" "}
+                      {booking.street_address}
+                    </span>
+                    {visit ? (
+                      <small>
+                        Service: {humanizeStatus(visit.status)}
+                        {visit.completed_at
+                          ? ` | Completed ${new Date(visit.completed_at).toLocaleDateString()}`
+                          : ""}
+                      </small>
+                    ) : null}
+                    {checklist?.service_completed ? (
+                      <small>Checklist complete. Photos are available in the Photos tab.</small>
+                    ) : null}
+                  </div>
+                  <span>{humanizeStatus(booking.status)}</span>
+                  <span>${booking.estimated_price}</span>
                   <span>
-                    {booking.bin_count}{" "}
-                    {booking.bin_count === 1 ? "bin" : "bins"} at{" "}
-                    {booking.street_address}
+                    {booking.confirmed_route_day ??
+                      booking.requested_date ??
+                      "Route day pending"}
                   </span>
-                </div>
-                <span>{humanizeStatus(booking.status)}</span>
-                <span>${booking.estimated_price}</span>
-                <span>
-                  {booking.confirmed_route_day ??
-                    booking.requested_date ??
-                    "Route day pending"}
-                </span>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         ) : (
           <>

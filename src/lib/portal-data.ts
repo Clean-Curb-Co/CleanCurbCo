@@ -6,8 +6,11 @@ import type {
   ActivityEventRow,
   BookingRow,
   CustomerRequestRow,
+  PaymentRow,
   ReferralRow,
   ServiceAddressRow,
+  ServiceChecklistRow,
+  ServicePhotoRow,
   ServiceVisitRow,
 } from "@/types/database";
 
@@ -19,6 +22,9 @@ export type PortalContext = {
   requests: CustomerRequestRow[];
   referrals: ReferralRow[];
   activity: ActivityEventRow[];
+  checklists: ServiceChecklistRow[];
+  photos: ServicePhotoRow[];
+  payments: PaymentRow[];
 };
 
 export async function getPortalContext(nextPath = "/portal"): Promise<PortalContext> {
@@ -33,6 +39,9 @@ export async function getPortalContext(nextPath = "/portal"): Promise<PortalCont
       requests: [],
       referrals: [],
       activity: [],
+      checklists: [],
+      photos: [],
+      payments: [],
     };
   }
 
@@ -44,6 +53,9 @@ export async function getPortalContext(nextPath = "/portal"): Promise<PortalCont
     requestsResult,
     referralsResult,
     activityResult,
+    checklistsResult,
+    photosResult,
+    paymentsResult,
   ] = await Promise.all([
     supabase
       .from("bookings")
@@ -69,6 +81,18 @@ export async function getPortalContext(nextPath = "/portal"): Promise<PortalCont
       .from("activity_events")
       .select("*")
       .order("created_at", { ascending: false }),
+    supabase
+      .from("service_checklists")
+      .select("*")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("service_photos")
+      .select("*")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("payments")
+      .select("*")
+      .order("created_at", { ascending: false }),
   ]);
 
   return {
@@ -79,5 +103,8 @@ export async function getPortalContext(nextPath = "/portal"): Promise<PortalCont
     requests: requestsResult.data ?? [],
     referrals: referralsResult.data ?? [],
     activity: activityResult.data ?? [],
+    checklists: checklistsResult.data ?? [],
+    photos: photosResult.data ?? [],
+    payments: paymentsResult.data ?? [],
   };
 }

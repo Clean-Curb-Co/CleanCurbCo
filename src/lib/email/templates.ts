@@ -1,9 +1,11 @@
 import { addOns } from "@/lib/site";
 import { formatFrequency } from "@/lib/pricing";
+import { policyWindowLabels, requestTypeLabels } from "@/lib/service-policy";
 import type {
   BookingRow,
   ContactMessageRow,
   CustomerRequestRow,
+  ProfileRow,
   ReferralRow,
 } from "@/types/database";
 
@@ -151,16 +153,78 @@ export function paymentLinkTemplate(booking: BookingRow): EmailTemplate {
   };
 }
 
-export function customerRequestReceivedTemplate(
-  request: CustomerRequestRow,
+export function paymentReceivedTemplate(
+  booking: BookingRow,
+  amount: number,
 ): EmailTemplate {
   const body = `
-    <p>We received your service request and will review it shortly.</p>
+    <p>Hi ${escapeHtml(booking.first_name)},</p>
+    <p>Payment received. Thank you for trusting Clean Curb Co. with your bins.</p>
     <ul style="line-height:1.7;padding-left:18px">
-      <li><strong>Request:</strong> ${escapeHtml(request.request_type.replaceAll("_", " "))}</li>
-      <li><strong>Status:</strong> ${escapeHtml(request.status.replaceAll("_", " "))}</li>
-      <li><strong>Message:</strong> ${escapeHtml(request.message ?? "None provided")}</li>
+      <li><strong>Amount paid:</strong> $${amount}</li>
+      <li><strong>Service address:</strong> ${escapeHtml(booking.street_address)}, ${escapeHtml(booking.city)}, ${escapeHtml(booking.state)} ${escapeHtml(booking.zip_code)}</li>
+      <li><strong>Service:</strong> ${escapeHtml(formatFrequency(booking.frequency))} | ${booking.bin_count} bin(s)</li>
+      <li><strong>Add-ons:</strong> ${escapeHtml(addOnLabels(booking.add_ons))}</li>
     </ul>
+    <p>Your customer portal will show updated payment status after Stripe finishes syncing.</p>
+    <p><strong>Fresh Starts at the Curb.</strong></p>
+  `;
+
+  return {
+    subject: "Payment received - Clean Curb Co.",
+    html: shell("Payment received", body),
+    text: `Payment received for Clean Curb Co. Amount paid: $${amount}. Fresh Starts at the Curb.`,
+  };
+}
+
+export function fieldOnTheWayTemplate(booking: BookingRow): EmailTemplate {
+  const body = `
+    <p>Hi ${escapeHtml(booking.first_name)},</p>
+    <p>We are heading your way for your Clean Curb Co. service.</p>
+    <p>Please make sure your bins are empty and accessible.</p>
+    <p><strong>Fresh Starts at the Curb.</strong></p>
+  `;
+
+  return {
+    subject: "We're on the way - Clean Curb Co.",
+    html: shell("We're on the way", body),
+    text: `Hi ${booking.first_name}, we are heading your way for your Clean Curb Co. service. Please make sure your bins are empty and accessible. Fresh Starts at the Curb.`,
+  };
+}
+
+export function serviceCompletedTemplate(
+  booking: BookingRow,
+  paymentLink?: string | null,
+): EmailTemplate {
+  const body = `
+    <p>Hi ${escapeHtml(booking.first_name)},</p>
+    <p>Your Clean Curb Co. service is complete. Thanks for letting us handle the grime at the curb.</p>
+    <p>Your before/after photos will be available in your customer portal when your account is connected.</p>
+    ${
+      paymentLink
+        ? `<p><a href="${escapeHtml(paymentLink)}" style="display:inline-block;background:#00ff38;color:#050505;padding:12px 18px;border-radius:8px;font-weight:800;text-decoration:none">Pay for this service</a></p>`
+        : ""
+    }
+    <p><strong>Fresh Starts at the Curb.</strong></p>
+  `;
+
+  return {
+    subject: "Your Clean Curb Co. service is complete",
+    html: shell("Service complete", body),
+    text: paymentLink
+      ? `Your Clean Curb Co. service is complete. Payment link: ${paymentLink}`
+      : "Your Clean Curb Co. service is complete. Fresh Starts at the Curb.",
+  };
+}
+
+export function customerRequestReceivedTemplate(
+  request: CustomerRequestRow,
+  booking?: BookingRow | null,
+  serviceDate?: string | null,
+): EmailTemplate {
+  const body = `
+    <p>We received your service request. If review is needed, Clean Curb Co. will follow up before making final changes.</p>
+    ${customerRequestSummaryHtml(request, booking, serviceDate)}
     <p>No service is paused, cancelled, or changed until Clean Curb Co. confirms it.</p>
   `;
 
@@ -176,18 +240,60 @@ export function customerRequestUpdatedTemplate(
 ): EmailTemplate {
   const body = `
     <p>Your service request has been updated.</p>
-    <ul style="line-height:1.7;padding-left:18px">
-      <li><strong>Request:</strong> ${escapeHtml(request.request_type.replaceAll("_", " "))}</li>
-      <li><strong>Status:</strong> ${escapeHtml(request.status.replaceAll("_", " "))}</li>
-      <li><strong>Admin note:</strong> ${escapeHtml(request.admin_notes ?? "No note added")}</li>
-    </ul>
+    ${customerRequestSummaryHtml(request)}
   `;
 
   return {
-    subject: "Clean Curb Co. service request update",
+    subject: "Update on your Clean Curb Co. service request",
     html: shell("Service request update", body),
     text: `Your Clean Curb Co. service request is now ${request.status}.`,
   };
+}
+
+export function adminCustomerRequestAlertTemplate(
+  request: CustomerRequestRow,
+  profile: ProfileRow,
+  booking?: BookingRow | null,
+  serviceDate?: string | null,
+): EmailTemplate {
+  const body = `
+    <p>A customer submitted a service change request.</p>
+    <ul style="line-height:1.7;padding-left:18px">
+      <li><strong>Customer:</strong> ${escapeHtml([profile.first_name, profile.last_name].filter(Boolean).join(" ") || profile.email || "Customer")}</li>
+      <li><strong>Email:</strong> ${escapeHtml(profile.email ?? booking?.email ?? "No email")}</li>
+      <li><strong>Phone:</strong> ${escapeHtml(profile.phone ?? booking?.phone ?? "No phone")}</li>
+      <li><strong>Booking:</strong> ${escapeHtml(booking?.id ?? request.booking_id ?? "No booking")}</li>
+      <li><strong>Scheduled date:</strong> ${escapeHtml(serviceDate ?? "No scheduled date")}</li>
+    </ul>
+    ${customerRequestSummaryHtml(request, booking, serviceDate)}
+  `;
+
+  return {
+    subject: "Customer service change request - Clean Curb Co.",
+    html: shell("Customer service change request", body),
+    text: `Customer service change request: ${request.request_type}, ${request.policy_window}.`,
+  };
+}
+
+function customerRequestSummaryHtml(
+  request: CustomerRequestRow,
+  booking?: BookingRow | null,
+  serviceDate?: string | null,
+) {
+  return `
+    <ul style="line-height:1.7;padding-left:18px">
+      <li><strong>Request:</strong> ${escapeHtml(requestTypeLabels[request.request_type] ?? request.request_type.replaceAll("_", " "))}</li>
+      <li><strong>Status:</strong> ${escapeHtml(request.status.replaceAll("_", " "))}</li>
+      <li><strong>Scheduled date:</strong> ${escapeHtml(serviceDate ?? booking?.confirmed_route_day ?? booking?.requested_date ?? "Not scheduled")}</li>
+      <li><strong>Policy window:</strong> ${escapeHtml(policyWindowLabels[request.policy_window] ?? request.policy_window)}</li>
+      <li><strong>Acknowledgment:</strong> ${request.policy_acknowledged ? `Completed by ${escapeHtml(request.policy_acknowledged_name ?? "customer")}` : "Not required or not completed"}</li>
+      <li><strong>Original estimated price:</strong> ${request.original_estimated_price === null ? "Not recorded" : `$${request.original_estimated_price}`}</li>
+      <li><strong>Cancellation fee:</strong> ${request.cancellation_fee === null ? "None configured" : `$${request.cancellation_fee}`}</li>
+      <li><strong>Full charge may apply:</strong> ${request.full_charge_applies ? "Yes" : "No"}</li>
+      <li><strong>Message:</strong> ${escapeHtml(request.message ?? "None provided")}</li>
+      <li><strong>Admin note:</strong> ${escapeHtml(request.admin_notes ?? "No note added")}</li>
+    </ul>
+  `;
 }
 
 export function referralRewardTemplate(

@@ -141,6 +141,10 @@ export default async function AdminBookingsPage({
               const referral = context.referrals.find(
                 (item) => item.referred_booking_id === booking.id,
               );
+              const bookingPayments = context.payments.filter(
+                (payment) => payment.booking_id === booking.id,
+              );
+              const latestPayment = bookingPayments[0] ?? null;
 
               return (
                 <form
@@ -174,6 +178,41 @@ export default async function AdminBookingsPage({
                           Referral: {humanizeStatus(referral.status)}
                         </span>
                       ) : null}
+                    </div>
+                  </div>
+
+                  <div className="admin-data-grid">
+                    <div>
+                      <span>Estimated price</span>
+                      <strong>${booking.estimated_price}</strong>
+                    </div>
+                    <div>
+                      <span>Payment records</span>
+                      <strong>{bookingPayments.length}</strong>
+                    </div>
+                    <div>
+                      <span>Stripe checkout</span>
+                      <strong>
+                        {latestPayment?.stripe_checkout_session_id ??
+                          booking.stripe_checkout_session_id ??
+                          "None"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Payment intent</span>
+                      <strong>
+                        {latestPayment?.stripe_payment_intent_id ??
+                          booking.stripe_payment_intent_id ??
+                          "None"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Subscription</span>
+                      <strong>
+                        {latestPayment?.stripe_subscription_id ??
+                          booking.stripe_subscription_id ??
+                          "None"}
+                      </strong>
                     </div>
                   </div>
 

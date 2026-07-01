@@ -29,6 +29,7 @@ type AdminCustomersPageProps = {
 const roleOptions = [
   { label: "Any role", value: "" },
   { label: "Customer", value: "customer" },
+  { label: "Technician", value: "technician" },
   { label: "Admin", value: "admin" },
   { label: "Owner", value: "owner" },
 ];

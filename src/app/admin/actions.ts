@@ -19,11 +19,30 @@ import type { BookingStatus, PaymentStatus } from "@/types/booking";
 import type {
   CustomerRequestStatus,
   Database,
+  FieldStopStatus,
   ReferralStatus,
+  RouteDayStatus,
 } from "@/types/database";
 
 type AdminClient = ReturnType<typeof getSupabaseAdmin>;
 const preferredContactMethods = ["email", "phone", "sms"] as const;
+const routeDayStatuses: readonly RouteDayStatus[] = [
+  "planned",
+  "active",
+  "completed",
+  "cancelled",
+];
+const routeStopStatuses: readonly FieldStopStatus[] = [
+  "scheduled",
+  "on_the_way",
+  "arrived",
+  "in_progress",
+  "completed",
+  "skipped",
+  "needs_follow_up",
+  "rescheduled",
+  "cancelled",
+];
 
 async function logActivity(
   admin: AdminClient,
@@ -163,6 +182,19 @@ export async function updatePaymentStatusAction(formData: FormData) {
     .single();
 
   if (booking) {
+    await admin
+      .from("payments")
+      .update({
+        status: paymentStatus === "not_sent" ? "not_sent" : paymentStatus,
+        provider: "manual",
+        metadata: {
+          updated_by: auth.userId,
+          updated_at: new Date().toISOString(),
+          source: "admin_payment_status_action",
+        },
+      })
+      .eq("booking_id", booking.id);
+
     await logActivity(admin, {
       actor_profile_id: auth.userId,
       customer_id: booking.customer_id,
@@ -287,6 +319,8 @@ export async function updateCustomerRequestAdminAction(formData: FormData) {
     validCustomerRequestStatuses,
     "reviewing",
   );
+  const bookingStatusInput = cleanString(formData.get("bookingStatus"), 40);
+  const paymentStatusInput = cleanString(formData.get("paymentStatus"), 40);
   if (!requestId) return;
 
   const admin = getSupabaseAdmin();
@@ -301,6 +335,31 @@ export async function updateCustomerRequestAdminAction(formData: FormData) {
     .single();
 
   if (request) {
+    if (request.booking_id && (bookingStatusInput || paymentStatusInput)) {
+      const bookingUpdate: {
+        status?: BookingStatus;
+        payment_status?: PaymentStatus;
+      } = {};
+
+      if (bookingStatusInput) {
+        bookingUpdate.status = pickEnum<BookingStatus>(
+          bookingStatusInput,
+          validBookingStatuses,
+          "needs_follow_up",
+        );
+      }
+
+      if (paymentStatusInput) {
+        bookingUpdate.payment_status = pickEnum<PaymentStatus>(
+          paymentStatusInput,
+          validPaymentStatuses,
+          "not_sent",
+        );
+      }
+
+      await admin.from("bookings").update(bookingUpdate).eq("id", request.booking_id);
+    }
+
     await logActivity(admin, {
       actor_profile_id: auth.userId,
       customer_id: request.customer_id,
@@ -324,6 +383,8 @@ export async function updateCustomerRequestAdminAction(formData: FormData) {
   }
 
   revalidatePath("/admin/requests");
+  revalidatePath("/admin/bookings");
+  revalidatePath("/admin/payments");
   if (request?.customer_id) revalidatePath(`/admin/customers/${request.customer_id}`);
 }
 
@@ -406,4 +467,242 @@ export async function sendReviewRequestAction(formData: FormData) {
   }
 
   revalidatePath("/admin/reviews");
+}
+
+export async function createRouteDayAdminAction(formData: FormData) {
+  const auth = await requireAdmin("/admin/routes");
+  if (auth.status !== "ok") return;
+
+  const routeDate = cleanString(formData.get("routeDate"), 30);
+  if (!routeDate) return;
+
+  const admin = getSupabaseAdmin();
+  await admin.from("route_days").insert({
+    route_date: routeDate,
+    route_name: cleanString(formData.get("routeName"), 120) || null,
+    service_area: cleanString(formData.get("serviceArea"), 120) || "Cane Bay",
+    status: pickEnum<RouteDayStatus>(
+      formData.get("status"),
+      routeDayStatuses,
+      "planned",
+    ),
+    assigned_technician_id:
+      cleanString(formData.get("assignedTechnicianId"), 80) || null,
+    notes: cleanLongText(formData.get("notes"), 1200) || null,
+  });
+
+  await logActivity(admin, {
+    actor_profile_id: auth.userId,
+    event_type: "route_day_created",
+    message: `Route day created for ${routeDate}.`,
+  });
+
+  revalidatePath("/admin/routes");
+  revalidatePath("/field/today");
+  revalidatePath("/field/routes");
+}
+
+export async function updateRouteDayAdminAction(formData: FormData) {
+  const auth = await requireAdmin("/admin/routes");
+  if (auth.status !== "ok") return;
+
+  const routeDayId = cleanString(formData.get("routeDayId"), 80);
+  if (!routeDayId) return;
+
+  const admin = getSupabaseAdmin();
+  await admin
+    .from("route_days")
+    .update({
+      route_name: cleanString(formData.get("routeName"), 120) || null,
+      service_area: cleanString(formData.get("serviceArea"), 120) || "Cane Bay",
+      status: pickEnum<RouteDayStatus>(
+        formData.get("status"),
+        routeDayStatuses,
+        "planned",
+      ),
+      assigned_technician_id:
+        cleanString(formData.get("assignedTechnicianId"), 80) || null,
+      notes: cleanLongText(formData.get("notes"), 1200) || null,
+    })
+    .eq("id", routeDayId);
+
+  await logActivity(admin, {
+    actor_profile_id: auth.userId,
+    event_type: "route_day_updated",
+    message: "Route day updated.",
+    metadata: { routeDayId },
+  });
+
+  revalidatePath("/admin/routes");
+  revalidatePath("/field/today");
+  revalidatePath("/field/routes");
+}
+
+export async function addBookingToRouteAdminAction(formData: FormData) {
+  const auth = await requireAdmin("/admin/routes");
+  if (auth.status !== "ok") return;
+
+  const routeDayId = cleanString(formData.get("routeDayId"), 80);
+  const bookingId = cleanString(formData.get("bookingId"), 80);
+  if (!routeDayId || !bookingId) return;
+
+  const admin = getSupabaseAdmin();
+  const [{ data: routeDay }, { data: booking }, { data: existingStop }] =
+    await Promise.all([
+      admin.from("route_days").select("*").eq("id", routeDayId).maybeSingle(),
+      admin.from("bookings").select("*").eq("id", bookingId).maybeSingle(),
+      admin
+        .from("route_stops")
+        .select("*")
+        .eq("route_day_id", routeDayId)
+        .eq("booking_id", bookingId)
+        .maybeSingle(),
+    ]);
+
+  if (!routeDay || !booking || existingStop) return;
+
+  const { data: existingVisit } = await admin
+    .from("service_visits")
+    .select("*")
+    .eq("booking_id", booking.id)
+    .maybeSingle();
+
+  let visitId = existingVisit?.id ?? "";
+  if (!visitId) {
+    const { data: createdVisit } = await admin
+      .from("service_visits")
+      .insert({
+        booking_id: booking.id,
+        customer_id: booking.customer_id,
+        route_day: routeDay.route_date,
+        status: "scheduled",
+      })
+      .select("*")
+      .single();
+    visitId = createdVisit?.id ?? "";
+  } else {
+    await admin
+      .from("service_visits")
+      .update({ route_day: routeDay.route_date, status: "scheduled" })
+      .eq("id", visitId);
+  }
+
+  const { data: lastStop } = await admin
+    .from("route_stops")
+    .select("stop_order")
+    .eq("route_day_id", routeDayId)
+    .order("stop_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const requestedOrder = Number(formData.get("stopOrder"));
+  const stopOrder =
+    Number.isFinite(requestedOrder) && requestedOrder > 0
+      ? requestedOrder
+      : (lastStop?.stop_order ?? 0) + 1;
+
+  await admin.from("route_stops").insert({
+    route_day_id: routeDayId,
+    booking_id: booking.id,
+    service_visit_id: visitId,
+    stop_order: stopOrder,
+    status: "scheduled",
+  });
+
+  await admin
+    .from("bookings")
+    .update({
+      status: "scheduled",
+      confirmed_route_day: routeDay.route_date,
+    })
+    .eq("id", booking.id);
+
+  await logActivity(admin, {
+    actor_profile_id: auth.userId,
+    customer_id: booking.customer_id,
+    booking_id: booking.id,
+    event_type: "booking_added_to_route",
+    message: "Booking added to route day.",
+    metadata: { routeDayId, stopOrder },
+  });
+
+  revalidatePath("/admin/routes");
+  revalidatePath("/admin/bookings");
+  revalidatePath("/field/today");
+  revalidatePath("/field/routes");
+}
+
+export async function updateRouteStopAdminAction(formData: FormData) {
+  const auth = await requireAdmin("/admin/routes");
+  if (auth.status !== "ok") return;
+
+  const routeStopId = cleanString(formData.get("routeStopId"), 80);
+  if (!routeStopId) return;
+
+  const stopOrder = Number(formData.get("stopOrder"));
+  const status = pickEnum<FieldStopStatus>(
+    formData.get("status"),
+    routeStopStatuses,
+    "scheduled",
+  );
+  const admin = getSupabaseAdmin();
+  const { data: stop } = await admin
+    .from("route_stops")
+    .update({
+      stop_order: Number.isFinite(stopOrder) ? stopOrder : 0,
+      status,
+      technician_notes: cleanLongText(formData.get("technicianNotes"), 1500) || null,
+    })
+    .eq("id", routeStopId)
+    .select("*")
+    .single();
+
+  if (stop?.service_visit_id) {
+    await admin
+      .from("service_visits")
+      .update({ status })
+      .eq("id", stop.service_visit_id);
+  }
+
+  await logActivity(admin, {
+    actor_profile_id: auth.userId,
+    booking_id: stop?.booking_id ?? null,
+    event_type: "route_stop_updated",
+    message: "Route stop updated.",
+    metadata: { routeStopId, status },
+  });
+
+  revalidatePath("/admin/routes");
+  revalidatePath("/field/today");
+  revalidatePath("/field/routes");
+  if (stop?.service_visit_id) revalidatePath(`/field/stops/${stop.service_visit_id}`);
+}
+
+export async function removeRouteStopAdminAction(formData: FormData) {
+  const auth = await requireAdmin("/admin/routes");
+  if (auth.status !== "ok") return;
+
+  const routeStopId = cleanString(formData.get("routeStopId"), 80);
+  if (!routeStopId) return;
+
+  const admin = getSupabaseAdmin();
+  const { data: stop } = await admin
+    .from("route_stops")
+    .select("*")
+    .eq("id", routeStopId)
+    .maybeSingle();
+
+  await admin.from("route_stops").delete().eq("id", routeStopId);
+
+  await logActivity(admin, {
+    actor_profile_id: auth.userId,
+    booking_id: stop?.booking_id ?? null,
+    event_type: "route_stop_removed",
+    message: "Route stop removed from route day.",
+    metadata: { routeStopId },
+  });
+
+  revalidatePath("/admin/routes");
+  revalidatePath("/field/today");
+  revalidatePath("/field/routes");
 }

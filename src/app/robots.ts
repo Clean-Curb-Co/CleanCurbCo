@@ -5,7 +5,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: ["/admin", "/portal"],
+      disallow: ["/admin", "/portal", "/field"],
     },
     sitemap: "https://cleancurbco.com/sitemap.xml",
   };

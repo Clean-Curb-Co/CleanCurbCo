@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { isSupabaseConfigured } from "@/lib/env";
-import { isAdminRole } from "@/lib/supabase/roles";
+import {
+  canRoleAccessPath,
+  defaultRouteForRole,
+} from "@/lib/supabase/roles";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { cleanString, isValidEmail } from "@/lib/validation";
+import type { AppRole } from "@/types/database";
 
 type LoginPayload = {
   email?: unknown;
@@ -49,9 +53,12 @@ export async function POST(request: Request) {
     .eq("id", data.user.id)
     .maybeSingle();
 
-  const fallbackRoute = profile && isAdminRole(profile.role) ? "/admin" : "/portal";
+  const role = (profile?.role ?? "customer") as AppRole;
+  const fallbackRoute = defaultRouteForRole(role);
   const redirectTo =
-    requestedNext.startsWith("/") && !requestedNext.startsWith("//")
+    requestedNext.startsWith("/") &&
+    !requestedNext.startsWith("//") &&
+    canRoleAccessPath(role, requestedNext)
       ? requestedNext
       : fallbackRoute;
 
