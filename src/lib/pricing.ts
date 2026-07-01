@@ -5,6 +5,13 @@ type PriceInput = {
   binCount: number;
   frequency: ServiceFrequency;
   addOns: string[];
+  applyFoundingNeighborPromo?: boolean;
+};
+
+export const pricingConfig = {
+  foundingNeighborSpecialEnabled: true,
+  foundingNeighborRecurringTwoBinFirstCleanPrice: 25,
+  recurringExtraBinPrice: 10,
 };
 
 const recurringBase: Record<ServiceFrequency, number> = {
@@ -25,16 +32,30 @@ export function calculateBasePrice(binCount: number, frequency: ServiceFrequency
   }
 
   const extraBins = Math.max(0, safeBinCount - 2);
-  return recurringBase[frequency] + extraBins * 8;
+  return recurringBase[frequency] + extraBins * pricingConfig.recurringExtraBinPrice;
 }
 
-export function calculateEstimatedPrice(input: PriceInput) {
+export function calculateBookingEstimate(input: PriceInput) {
   const addOnTotal = input.addOns.reduce((total, addOnId) => {
     const addOn = addOns.find((item) => item.id === addOnId);
     return total + (addOn?.estimate ?? 0);
   }, 0);
 
-  return calculateBasePrice(input.binCount, input.frequency) + addOnTotal;
+  const eligibleForFoundingSpecial =
+    pricingConfig.foundingNeighborSpecialEnabled &&
+    input.applyFoundingNeighborPromo &&
+    input.frequency !== "one_time" &&
+    input.binCount <= 2;
+
+  const basePrice = eligibleForFoundingSpecial
+    ? pricingConfig.foundingNeighborRecurringTwoBinFirstCleanPrice
+    : calculateBasePrice(input.binCount, input.frequency);
+
+  return basePrice + addOnTotal;
+}
+
+export function calculateEstimatedPrice(input: PriceInput) {
+  return calculateBookingEstimate(input);
 }
 
 export function formatFrequency(frequency: ServiceFrequency) {

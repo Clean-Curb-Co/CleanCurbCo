@@ -3,6 +3,8 @@ import type { Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { getSiteUrl } from "@/lib/env";
+import { brand } from "@/lib/site";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -16,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://cleancurbco.com"),
+  metadataBase: new URL(getSiteUrl()),
   title: {
     default: "Clean Curb Co. | Garbage Bin Cleaning in Cane Bay, SC",
     template: "%s | Clean Curb Co.",
@@ -34,15 +36,15 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Clean Curb Co. | Garbage Bin Cleaning in Cane Bay, SC",
     description:
-      "Fresh starts at the curb for Cane Bay and nearby Summerville communities.",
+      "Fresh Starts at the Curb. Garbage bin cleaning for Cane Bay and nearby Summerville communities.",
     url: "/",
     siteName: "Clean Curb Co.",
     images: [
       {
-        url: "/clean-curb-hero.png",
-        width: 1792,
+        url: "/opengraph-image.png",
+        width: 1024,
         height: 1024,
-        alt: "Clean garbage bins being washed at the curb.",
+        alt: brand.logoAlt,
       },
     ],
     locale: "en_US",
@@ -50,10 +52,10 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Clean Curb Co. | Fresh starts at the curb",
+    title: "Clean Curb Co. | Fresh Starts at the Curb.",
     description:
       "Professional garbage bin cleaning for Cane Bay and nearby Summerville communities.",
-    images: ["/clean-curb-hero.png"],
+    images: ["/twitter-image.png"],
   },
 };
 
@@ -70,6 +72,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      data-scroll-behavior="smooth"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">

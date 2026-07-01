@@ -119,8 +119,8 @@ export function PricingSection() {
             join any recurring plan.
           </h2>
           <p>
-            Easy to edit, easy to retire later. For launch, it keeps Cane Bay
-            fresh and route-friendly.
+            Limited launch offer for Cane Bay neighbors joining a recurring
+            route.
           </p>
         </div>
         <SectionHeader kicker="Pricing" title="Simple pricing. Cleaner bins.">
@@ -197,8 +197,9 @@ export function ServiceAreaSection() {
       <div className="container service-area-panel">
         <div>
           <SectionHeader kicker="Service area" title="Now Serving Cane Bay">
-            We clean by neighborhood route to keep prices affordable and service
-            reliable. Own Cane Bay&apos;s trash day first, then expand with care.
+            We&apos;re starting in Cane Bay so we can build reliable
+            neighborhood routes, keep pricing fair, and serve customers without
+            long delays.
           </SectionHeader>
           <div className="hero-actions">
             <Link className="button button-primary" href="/book">
@@ -354,7 +355,7 @@ export function FutureServicesSection() {
             <article className="card dark-card" key={service}>
               <span className="status-badge">Coming Soon</span>
               <h3>{service}</h3>
-              <p>This feature is being built for Clean Curb Co.</p>
+              <p>Available later as routes, equipment, and neighborhood demand grow.</p>
             </article>
           ))}
         </div>

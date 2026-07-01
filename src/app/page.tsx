@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, CalendarCheck, DollarSign } from "lucide-react";
+import { brand } from "@/lib/site";
 import {
   AddOnsSection,
   FAQSection,
@@ -27,8 +28,16 @@ export default function Home() {
         />
         <div className="hero-scrim" />
         <div className="container hero-content">
+          <Image
+            src="/clean-curb-logo.png"
+            alt={brand.logoAlt}
+            width={132}
+            height={132}
+            className="hero-logo"
+            priority
+          />
           <p className="eyebrow">Clean Curb Co. | Cane Bay, SC</p>
-          <h1>Fresh starts at the curb</h1>
+          <h1>Fresh Starts at the Curb.</h1>
           <p className="hero-subtitle">
             Professional garbage bin cleaning in Cane Bay and nearby
             Summerville communities.

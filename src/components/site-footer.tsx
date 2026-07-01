@@ -9,7 +9,8 @@ const footerLinks = [
   { label: "FAQ", href: "/faq" },
   { label: "Contact", href: "/contact" },
   { label: "Customer Portal", href: "/portal" },
-  { label: "Admin", href: "/admin" },
+  { label: "Privacy", href: "/privacy" },
+  { label: "Terms", href: "/terms" },
 ];
 
 export function SiteFooter() {
@@ -25,9 +26,13 @@ export function SiteFooter() {
               Now serving {brand.area}
             </p>
             <p className="muted">
-              {brand.phone}
+              <a className="contact-link" href={brand.phoneHref}>
+                {brand.phone}
+              </a>
               <br />
-              {brand.email}
+              <a className="contact-link" href={brand.emailHref}>
+                {brand.email}
+              </a>
             </p>
           </div>
           <nav className="footer-links" aria-label="Footer navigation">
@@ -40,8 +45,7 @@ export function SiteFooter() {
         </div>
         <p className="footer-small">
           {brand.legalNote} Public-facing service is provided under the Clean
-          Curb Co. brand. Payment, route scheduling, and portal features are
-          being built in stages.
+          Curb Co. brand.
         </p>
       </div>
     </footer>

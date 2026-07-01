@@ -2,12 +2,15 @@ import type { ServiceFrequency } from "@/types/booking";
 
 export const brand = {
   name: "Clean Curb Co.",
-  tagline: "Fresh starts at the curb",
+  tagline: "Fresh Starts at the Curb.",
   legalNote:
     "Clean Curb Co. is operated as a DBA under Stonebranch Capital LLC.",
   area: "Cane Bay / Summerville, SC",
-  phone: "843-888-4121",
+  phone: "+1 (843) 888-4121",
+  phoneHref: "tel:+18438884121",
   email: "cleancurbco@stonebranchcapital.com",
+  emailHref: "mailto:cleancurbco@stonebranchcapital.com",
+  logoAlt: "Clean Curb Co. logo — Fresh Starts at the Curb.",
 };
 
 export const navItems = [
@@ -233,7 +236,7 @@ export const adminFeatures = [
   "Agreement tracking",
   "Water spigot availability",
   "Before/after photos",
-  "Route map placeholder",
+  "Route map planning",
   "Review request status",
   "Referral tracking",
   "Settings/pricing editing",

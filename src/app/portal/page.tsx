@@ -1,11 +1,96 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { PortalShell } from "@/components/shells/portal-shell";
+import { humanizeStatus } from "@/lib/booking-utils";
+import { getPortalContext } from "@/lib/portal-data";
+import { formatFrequency } from "@/lib/pricing";
 
 export const metadata: Metadata = {
   title: "Customer Portal",
-  description: "Future Clean Curb Co. customer portal.",
+  description: "Clean Curb Co. customer portal.",
 };
 
-export default function PortalPage() {
-  return <PortalShell title="Customer portal" />;
+export default async function PortalPage() {
+  const context = await getPortalContext("/portal");
+  const latestBooking = context.bookings[0];
+  const nextVisit = context.visits.find((visit) =>
+    ["scheduled", "on_the_way", "arrived", "in_progress"].includes(
+      visit.status,
+    ),
+  );
+
+  return (
+    <PortalShell title="Customer portal" auth={context.auth}>
+      <section className="dashboard-grid">
+        <article className="placeholder-panel">
+          <p className="section-kicker">Overview</p>
+          <h1>
+            Hi{" "}
+            {context.auth.status === "ok"
+              ? context.auth.profile.first_name ?? "there"
+              : "there"}
+            .
+          </h1>
+          <p>
+            Your Clean Curb Co. service details will stay organized here as
+            route days, payment links, and photos are added.
+          </p>
+          <Link className="button button-dark" href="/book">
+            Request Another Cleaning
+          </Link>
+        </article>
+        <article className="card">
+          <h3>Latest booking</h3>
+          {latestBooking ? (
+            <p>
+              <strong>{humanizeStatus(latestBooking.status)}</strong>
+              <br />
+              {formatFrequency(latestBooking.frequency)}
+              <br />${latestBooking.estimated_price} estimated visit
+            </p>
+          ) : (
+            <p>No bookings are linked to this account yet.</p>
+          )}
+        </article>
+        <article className="card">
+          <h3>Next route update</h3>
+          {nextVisit?.route_day ? (
+            <p>
+              <strong>{nextVisit.route_day}</strong>
+              <br />
+              {humanizeStatus(nextVisit.status)}
+            </p>
+          ) : latestBooking?.confirmed_route_day ? (
+            <p>
+              <strong>{latestBooking.confirmed_route_day}</strong>
+              <br />
+              Route day confirmed
+            </p>
+          ) : (
+            <p>We will text you when your next route day is confirmed.</p>
+          )}
+        </article>
+        <article className="card">
+          <h3>Service address</h3>
+          {context.addresses[0] ? (
+            <p>
+              {context.addresses[0].street_address}
+              <br />
+              {context.addresses[0].city}, {context.addresses[0].state}{" "}
+              {context.addresses[0].zip_code}
+            </p>
+          ) : latestBooking ? (
+            <p>
+              {latestBooking.street_address}
+              <br />
+              {latestBooking.city}, {latestBooking.state}{" "}
+              {latestBooking.zip_code}
+            </p>
+          ) : (
+            <p>No address is linked yet.</p>
+          )}
+        </article>
+      </section>
+    </PortalShell>
+  );
 }

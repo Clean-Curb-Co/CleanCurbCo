@@ -8,7 +8,7 @@ export function BrandLogo() {
       <span className="brand-image-frame" aria-hidden="true">
         <Image
           src="/clean-curb-logo.png"
-          alt=""
+          alt={brand.logoAlt}
           width={72}
           height={72}
           className="brand-logo-image"

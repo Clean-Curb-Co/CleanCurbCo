@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { PlaceholderPanel } from "@/components/placeholder-page";
-import { adminFeatures } from "@/lib/site";
+import { LogoutButton } from "@/components/logout-button";
+import { requireAdmin, type AuthResult } from "@/lib/supabase/auth";
 
 const adminLinks = [
   { label: "Overview", href: "/admin" },
@@ -13,30 +13,52 @@ const adminLinks = [
   { label: "Settings", href: "/admin/settings" },
 ];
 
-export function AdminShell({
+export async function AdminShell({
   title,
   children,
+  auth,
 }: {
   title: string;
   children?: React.ReactNode;
+  auth?: AuthResult;
 }) {
+  const currentAuth = auth ?? (await requireAdmin("/admin"));
+
+  if (currentAuth.status !== "ok") {
+    return (
+      <main className="section section-cream">
+        <div className="container shell-layout">
+          <section className="placeholder-panel">
+            <p className="section-kicker">Protected Area</p>
+            <h1>{title}</h1>
+            <p>{currentAuth.message}</p>
+          </section>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="section section-cream">
       <div className="container shell-layout">
-        <nav className="shell-nav" aria-label="Admin navigation">
-          {adminLinks.map((link) => (
-            <Link href={link.href} key={link.href}>
-              {link.label}
-            </Link>
-          ))}
-        </nav>
+        <div className="shell-topbar">
+          <nav className="shell-nav" aria-label="Admin navigation">
+            {adminLinks.map((link) => (
+              <Link href={link.href} key={link.href}>
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+          <LogoutButton />
+        </div>
         {children ?? (
-          <PlaceholderPanel
-            title={title}
-            features={adminFeatures.slice(0, 6)}
-            ctaHref="/admin/bookings"
-            ctaLabel="View Mock Bookings"
-          />
+          <section className="placeholder-panel">
+            <p className="section-kicker">Protected Area</p>
+            <h1>{title}</h1>
+            <p>
+              Admin tools are available after sign-in.
+            </p>
+          </section>
         )}
       </div>
     </main>

@@ -37,6 +37,10 @@ export type BookingRequest = {
     phone: string;
     email: string;
     serviceAddress: string;
+    streetAddress: string;
+    city: string;
+    state: string;
+    zipCode?: string;
     neighborhood?: string;
   };
 
@@ -73,6 +77,8 @@ export type BookingRequest = {
     status: PaymentStatus;
     method?: string;
     paymentLink?: string;
+    provider?: string;
+    reference?: string;
   };
 
   photos?: {

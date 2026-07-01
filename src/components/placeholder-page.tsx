@@ -23,7 +23,7 @@ export function PlaceholderPage({
 
 export function PlaceholderPanel({
   title,
-  description = "This feature is being built for Clean Curb Co.",
+  description = "This area is coming soon. For now, book online or contact us and we will help directly.",
   features = [],
   ctaHref = "/book",
   ctaLabel = "Book a Cleaning",
@@ -42,7 +42,7 @@ export function PlaceholderPanel({
             <article className="card" key={feature}>
               <Sparkles size={20} aria-hidden="true" />
               <h3>{feature}</h3>
-              <p>Under Maintenance</p>
+              <p>Planned Feature</p>
             </article>
           ))}
         </div>

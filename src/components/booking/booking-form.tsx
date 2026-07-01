@@ -16,7 +16,10 @@ type FormState = {
     lastName: string;
     phone: string;
     email: string;
-    serviceAddress: string;
+    streetAddress: string;
+    city: string;
+    state: string;
+    zipCode: string;
     neighborhood: string;
   };
   service: {
@@ -43,7 +46,10 @@ const initialState: FormState = {
     lastName: "",
     phone: "",
     email: "",
-    serviceAddress: "",
+    streetAddress: "",
+    city: "Summerville",
+    state: "SC",
+    zipCode: "",
     neighborhood: "Cane Bay Plantation",
   },
   service: {
@@ -75,6 +81,7 @@ export function BookingForm() {
   const [form, setForm] = useState<FormState>(initialState);
   const [submittedBooking, setSubmittedBooking] =
     useState<BookingRequest | null>(null);
+  const [setupHref, setSetupHref] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -84,6 +91,7 @@ export function BookingForm() {
         binCount: form.service.binCount,
         frequency: form.service.frequency,
         addOns: form.service.addOns,
+        applyFoundingNeighborPromo: form.service.frequency !== "one_time",
       }),
     [form.service.addOns, form.service.binCount, form.service.frequency],
   );
@@ -138,14 +146,24 @@ export function BookingForm() {
         body: JSON.stringify(form),
       });
 
-      if (!response.ok) {
-        throw new Error("Booking request failed");
+      const data = (await response.json()) as {
+        booking?: BookingRequest;
+        redirectTo?: string | null;
+        error?: string;
+      };
+
+      if (!response.ok || !data.booking) {
+        throw new Error(data.error ?? "Booking request failed");
       }
 
-      const data = (await response.json()) as { booking: BookingRequest };
       setSubmittedBooking(data.booking);
-    } catch {
-      setError("Something got stuck. Please try again or contact us directly.");
+      setSetupHref(data.redirectTo ?? null);
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Something got stuck. Please try again or contact us directly.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -159,8 +177,13 @@ export function BookingForm() {
           <h2>Thanks! Your request has been received.</h2>
           <p>
             We will text you shortly to confirm your Cane Bay route day and
-            final price. Fresh starts at the curb
+            final price. Fresh Starts at the Curb.
           </p>
+          {setupHref ? (
+            <a className="button button-dark" href={setupHref}>
+              Set Up Customer Account
+            </a>
+          ) : null}
           <p>
             <strong>Booking ID:</strong> {submittedBooking.id}
           </p>
@@ -203,10 +226,27 @@ export function BookingForm() {
               required
             />
             <TextField
-              label="Service address"
-              value={form.customer.serviceAddress}
-              onChange={(value) => updateCustomer("serviceAddress", value)}
+              label="Street address"
+              value={form.customer.streetAddress}
+              onChange={(value) => updateCustomer("streetAddress", value)}
               required
+            />
+            <TextField
+              label="City"
+              value={form.customer.city}
+              onChange={(value) => updateCustomer("city", value)}
+              required
+            />
+            <TextField
+              label="State"
+              value={form.customer.state}
+              onChange={(value) => updateCustomer("state", value)}
+              required
+            />
+            <TextField
+              label="ZIP code"
+              value={form.customer.zipCode}
+              onChange={(value) => updateCustomer("zipCode", value)}
             />
             <label className="field">
               <span>Neighborhood / subdivision</span>
@@ -482,7 +522,10 @@ export function BookingForm() {
           <span>/ visit</span>
         </div>
         <p>
-          {formatFrequency(form.service.frequency)} for {form.service.binCount}
+          {form.service.frequency === "one_time"
+            ? formatFrequency(form.service.frequency)
+            : "Estimated first visit"}{" "}
+          for {form.service.binCount}
           {form.service.binCount === 1 ? " bin" : " bins"}.
         </p>
         <ul className="check-list">

@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { LogoutButton } from "@/components/logout-button";
 import { PlaceholderPanel } from "@/components/placeholder-page";
 import { portalFeatures } from "@/lib/site";
+import { requireAuth, type AuthResult } from "@/lib/supabase/auth";
 
 const portalLinks = [
   { label: "Overview", href: "/portal" },
@@ -11,23 +13,45 @@ const portalLinks = [
   { label: "Referrals", href: "/portal/referrals" },
 ];
 
-export function PortalShell({
+export async function PortalShell({
   title,
   children,
+  auth,
 }: {
   title: string;
   children?: React.ReactNode;
+  auth?: AuthResult;
 }) {
+  const currentAuth = auth ?? (await requireAuth("/portal"));
+
+  if (currentAuth.status === "unconfigured") {
+    return (
+      <main className="section section-cream">
+        <div className="container">
+          <PlaceholderPanel
+            title="Customer portal"
+            features={portalFeatures.slice(0, 5)}
+            ctaHref="/book"
+            ctaLabel="Book a Cleaning"
+          />
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="section section-cream">
       <div className="container shell-layout">
-        <nav className="shell-nav" aria-label="Customer portal navigation">
-          {portalLinks.map((link) => (
-            <Link href={link.href} key={link.href}>
-              {link.label}
-            </Link>
-          ))}
-        </nav>
+        <div className="shell-topbar">
+          <nav className="shell-nav" aria-label="Customer portal navigation">
+            {portalLinks.map((link) => (
+              <Link href={link.href} key={link.href}>
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+          <LogoutButton />
+        </div>
         {children ?? (
           <PlaceholderPanel
             title={title}

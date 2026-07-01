@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Mail, MapPin, Phone } from "lucide-react";
+import { ContactForm } from "@/components/contact-form";
 import { brand } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -27,12 +28,20 @@ export default function ContactPage() {
           <article className="card">
             <Phone size={24} aria-hidden="true" />
             <h3>Phone</h3>
-            <p>{brand.phone}</p>
+            <p>
+              <a className="contact-link" href={brand.phoneHref}>
+                {brand.phone}
+              </a>
+            </p>
           </article>
           <article className="card">
             <Mail size={24} aria-hidden="true" />
             <h3>Email</h3>
-            <p>{brand.email}</p>
+            <p>
+              <a className="contact-link" href={brand.emailHref}>
+                {brand.email}
+              </a>
+            </p>
           </article>
           <article className="card">
             <MapPin size={24} aria-hidden="true" />
@@ -44,6 +53,9 @@ export default function ContactPage() {
           <Link className="button button-dark" href="/book">
             Book Now
           </Link>
+        </div>
+        <div className="container contact-form-wrap">
+          <ContactForm />
         </div>
       </section>
     </main>

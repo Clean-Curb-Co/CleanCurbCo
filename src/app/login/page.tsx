@@ -1,23 +1,44 @@
 import type { Metadata } from "next";
-import { PlaceholderPage } from "@/components/placeholder-page";
+import { Suspense } from "react";
+import Link from "next/link";
+import { LoginForm } from "@/components/login-form";
 
 export const metadata: Metadata = {
   title: "Login",
-  description: "Clean Curb Co. customer portal login placeholder.",
+  description: "Clean Curb Co. customer portal login.",
 };
 
 export default function LoginPage() {
   return (
-    <PlaceholderPage
-      title="Customer login"
-      description="This feature is being built for Clean Curb Co. For now, booking requests are confirmed by text."
-      features={[
-        "Secure customer login",
-        "Upcoming service view",
-        "Payment and billing access",
-      ]}
-      ctaHref="/book"
-      ctaLabel="Book Without Login"
-    />
+    <main>
+      <section className="page-hero">
+        <div className="container section-header">
+          <p className="section-kicker">Login</p>
+          <h1>Welcome back.</h1>
+          <p>
+            View your Clean Curb Co. bookings, route updates, payment links,
+            and service photos.
+          </p>
+        </div>
+      </section>
+      <section className="section section-cream">
+        <div className="container auth-layout">
+          <Suspense fallback={<p className="muted">Loading login...</p>}>
+            <LoginForm />
+          </Suspense>
+          <section className="placeholder-panel">
+            <p className="section-kicker">New here?</p>
+            <h2>Book first, then set up your account.</h2>
+            <p>
+              For launch, customer accounts are linked after booking so your
+              route request and service address stay together.
+            </p>
+            <Link className="button button-dark" href="/book">
+              Book a Cleaning
+            </Link>
+          </section>
+        </div>
+      </section>
+    </main>
   );
 }

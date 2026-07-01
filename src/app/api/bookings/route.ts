@@ -1,116 +1,282 @@
 import { NextResponse } from "next/server";
-import { calculateEstimatedPrice } from "@/lib/pricing";
-import type {
-  BookingRequest,
-  SchedulingPreference,
-  ServiceFrequency,
-} from "@/types/booking";
+import { createAccountSetupLink, createClaimToken, hashClaimToken } from "@/lib/booking-claims";
+import {
+  bookingRowToRequest,
+  validFrequencies,
+  validSchedulingPreferences,
+} from "@/lib/booking-utils";
+import { isSupabaseConfigured } from "@/lib/env";
+import { sendAccountSetupEmail } from "@/lib/email/sendAccountSetupEmail";
+import { sendAdminBookingNotification } from "@/lib/email/sendAdminBookingNotification";
+import { sendBookingConfirmation } from "@/lib/email/sendBookingConfirmation";
+import { calculateBookingEstimate } from "@/lib/pricing";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import {
+  cleanArray,
+  cleanLongText,
+  cleanString,
+  isValidEmail,
+  mustBeTrue,
+  parsePositiveInt,
+  pickEnum,
+} from "@/lib/validation";
+import type { SchedulingPreference, ServiceFrequency } from "@/types/booking";
 
-type IncomingBooking = Omit<
-  BookingRequest,
-  "id" | "createdAt" | "status" | "payment" | "photos" | "internalNotes"
->;
+type IncomingBooking = {
+  customer?: {
+    firstName?: unknown;
+    lastName?: unknown;
+    phone?: unknown;
+    email?: unknown;
+    serviceAddress?: unknown;
+    streetAddress?: unknown;
+    city?: unknown;
+    state?: unknown;
+    zipCode?: unknown;
+    neighborhood?: unknown;
+  };
+  service?: {
+    binCount?: unknown;
+    binTypes?: unknown;
+    frequency?: unknown;
+    addOns?: unknown;
+  };
+  scheduling?: {
+    preference?: unknown;
+    requestedDate?: unknown;
+  };
+  instructions?: {
+    binLocation?: unknown;
+    waterSpigotAvailable?: unknown;
+    notes?: unknown;
+  };
+  agreements?: {
+    waterUse?: unknown;
+    binCondition?: unknown;
+    wastewater?: unknown;
+    weatherAccess?: unknown;
+    photos?: unknown;
+    payment?: unknown;
+  };
+};
 
-const validFrequencies: ServiceFrequency[] = [
-  "one_time",
-  "monthly",
-  "every_other_month",
-  "quarterly",
-];
-
-const validScheduling: SchedulingPreference[] = [
-  "next_available_route_day",
-  "specific_day",
-  "urgent",
-];
+const validWaterSpigotValues = ["yes", "no", "not_sure"] as const;
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as Partial<IncomingBooking>;
-  const frequency = normalizeFrequency(body.service?.frequency);
-  const binCount = normalizeBinCount(body.service?.binCount);
-  const addOns = Array.isArray(body.service?.addOns) ? body.service.addOns : [];
+  if (!isSupabaseConfigured()) {
+    return NextResponse.json(
+      {
+        error:
+          "Online booking is being connected. Please call or email Clean Curb Co. and we will get your route request handled.",
+      },
+      { status: 503 },
+    );
+  }
 
-  const booking: BookingRequest = {
-    id: `ccc-${crypto.randomUUID().slice(0, 8)}`,
-    createdAt: new Date().toISOString(),
-    status: "new",
-    customer: {
-      firstName: cleanString(body.customer?.firstName),
-      lastName: cleanString(body.customer?.lastName),
-      phone: cleanString(body.customer?.phone),
-      email: cleanString(body.customer?.email),
-      serviceAddress: cleanString(body.customer?.serviceAddress),
-      neighborhood: cleanString(body.customer?.neighborhood),
-    },
-    service: {
-      binCount,
-      binTypes: Array.isArray(body.service?.binTypes)
-        ? body.service.binTypes.map(cleanString).filter(Boolean)
-        : [],
-      frequency,
-      addOns,
-      estimatedPrice: calculateEstimatedPrice({
-        binCount,
-        frequency,
-        addOns,
-      }),
-    },
-    scheduling: {
-      preference: normalizeScheduling(body.scheduling?.preference),
-      requestedDate: cleanString(body.scheduling?.requestedDate) || undefined,
-      confirmedRouteDay: undefined,
-    },
-    instructions: {
-      binLocation: cleanString(body.instructions?.binLocation) || "Curbside",
-      waterSpigotAvailable:
-        body.instructions?.waterSpigotAvailable === "no" ||
-        body.instructions?.waterSpigotAvailable === "not_sure"
-          ? body.instructions.waterSpigotAvailable
-          : "yes",
-      notes: cleanString(body.instructions?.notes) || undefined,
-    },
-    agreements: {
-      waterUse: Boolean(body.agreements?.waterUse),
-      binCondition: Boolean(body.agreements?.binCondition),
-      wastewater: Boolean(body.agreements?.wastewater),
-      weatherAccess: Boolean(body.agreements?.weatherAccess),
-      photos: Boolean(body.agreements?.photos),
-      payment: Boolean(body.agreements?.payment),
-    },
-    payment: {
-      status: "not_sent",
-    },
+  let body: IncomingBooking;
+
+  try {
+    body = (await request.json()) as IncomingBooking;
+  } catch {
+    return NextResponse.json({ error: "Invalid booking request." }, { status: 400 });
+  }
+
+  const firstName = cleanString(body.customer?.firstName, 80);
+  const lastName = cleanString(body.customer?.lastName, 80);
+  const phone = cleanString(body.customer?.phone, 40);
+  const email = cleanString(body.customer?.email, 120).toLowerCase();
+  const streetAddress =
+    cleanString(body.customer?.streetAddress, 180) ||
+    cleanString(body.customer?.serviceAddress, 180);
+  const city = cleanString(body.customer?.city, 80) || "Summerville";
+  const state = cleanString(body.customer?.state, 20) || "SC";
+  const zipCode = cleanString(body.customer?.zipCode, 20) || null;
+  const neighborhood = cleanString(body.customer?.neighborhood, 120) || null;
+  const binCount = parsePositiveInt(body.service?.binCount, 2);
+  const frequency = pickEnum<ServiceFrequency>(
+    body.service?.frequency,
+    validFrequencies,
+    "one_time",
+  );
+  const schedulingPreference = pickEnum<SchedulingPreference>(
+    body.scheduling?.preference,
+    validSchedulingPreferences,
+    "next_available_route_day",
+  );
+  const requestedDate = cleanString(body.scheduling?.requestedDate, 30) || null;
+  const binTypes = cleanArray(body.service?.binTypes);
+  const addOns = cleanArray(body.service?.addOns);
+  const waterSpigotAvailable = pickEnum(
+    body.instructions?.waterSpigotAvailable,
+    validWaterSpigotValues,
+    "not_sure",
+  );
+
+  const agreements = {
+    waterUse: mustBeTrue(body.agreements?.waterUse),
+    binCondition: mustBeTrue(body.agreements?.binCondition),
+    wastewater: mustBeTrue(body.agreements?.wastewater),
+    weatherAccess: mustBeTrue(body.agreements?.weatherAccess),
+    photos: mustBeTrue(body.agreements?.photos),
+    payment: mustBeTrue(body.agreements?.payment),
   };
 
-  // TODO: Persist booking, trigger SMS/email confirmations, and create payment
-  // links through the selected provider once backend credentials are available.
+  const missingRequired = [
+    !firstName && "first name",
+    !lastName && "last name",
+    !phone && "phone",
+    !email && "email",
+    !streetAddress && "street address",
+    !city && "city",
+    !state && "state",
+    !isValidEmail(email) && "valid email",
+    !Object.values(agreements).every(Boolean) && "required agreements",
+  ].filter(Boolean);
+
+  if (missingRequired.length) {
+    return NextResponse.json(
+      { error: `Please complete: ${missingRequired.join(", ")}.` },
+      { status: 400 },
+    );
+  }
+
+  const estimatedPrice = calculateBookingEstimate({
+    binCount,
+    frequency,
+    addOns,
+    applyFoundingNeighborPromo: frequency !== "one_time",
+  });
+
+  const admin = getSupabaseAdmin();
+  let customerId: string | null = null;
+  let serviceAddressId: string | null = null;
+
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    customerId = user?.id ?? null;
+
+    if (customerId) {
+      const { data: profile } = await admin
+        .from("profiles")
+        .upsert(
+          {
+            id: customerId,
+            email,
+            first_name: firstName,
+            last_name: lastName,
+            phone,
+          },
+          { onConflict: "id" },
+        )
+        .select("id")
+        .single();
+
+      if (profile?.id) {
+        const { data: serviceAddress } = await admin
+          .from("service_addresses")
+          .insert({
+            customer_id: profile.id,
+            street_address: streetAddress,
+            city,
+            state,
+            zip_code: zipCode,
+            neighborhood,
+            notes: cleanLongText(body.instructions?.notes, 1000) || null,
+            is_primary: true,
+          })
+          .select("id")
+          .single();
+
+        serviceAddressId = serviceAddress?.id ?? null;
+      }
+    }
+  } catch {
+    customerId = null;
+    serviceAddressId = null;
+  }
+
+  const { data: booking, error } = await admin
+    .from("bookings")
+    .insert({
+      customer_id: customerId,
+      service_address_id: serviceAddressId,
+      status: "new",
+      first_name: firstName,
+      last_name: lastName,
+      phone,
+      email,
+      street_address: streetAddress,
+      city,
+      state,
+      zip_code: zipCode,
+      neighborhood,
+      bin_count: binCount,
+      bin_types: binTypes,
+      frequency,
+      add_ons: addOns,
+      estimated_price: estimatedPrice,
+      scheduling_preference: schedulingPreference,
+      requested_date: requestedDate,
+      bin_location: cleanString(body.instructions?.binLocation, 120) || "Curbside",
+      water_spigot_available: waterSpigotAvailable,
+      customer_notes: cleanLongText(body.instructions?.notes, 1500) || null,
+      agreement_water_use: agreements.waterUse,
+      agreement_bin_condition: agreements.binCondition,
+      agreement_wastewater: agreements.wastewater,
+      agreement_weather_access: agreements.weatherAccess,
+      agreement_photos: agreements.photos,
+      agreement_payment: agreements.payment,
+      payment_status: "not_sent",
+    })
+    .select("*")
+    .single();
+
+  if (error || !booking) {
+    return NextResponse.json(
+      { error: "We could not save that booking request. Please try again." },
+      { status: 500 },
+    );
+  }
+
+  let redirectTo: string | null = null;
+  let setupLink: string | null = null;
+
+  if (!customerId) {
+    const token = createClaimToken();
+    const tokenHash = hashClaimToken(token);
+
+    await admin.from("booking_claims").insert({
+      booking_id: booking.id,
+      email,
+      token_hash: tokenHash,
+    });
+
+    redirectTo = `/account-setup?booking=${booking.id}&token=${encodeURIComponent(token)}`;
+    setupLink = createAccountSetupLink(booking.id, token);
+  }
+
+  const emailJobs = [
+    sendBookingConfirmation(booking),
+    sendAdminBookingNotification(booking),
+  ];
+
+  if (setupLink) {
+    emailJobs.push(sendAccountSetupEmail(booking, setupLink));
+  }
+
+  await Promise.allSettled(emailJobs);
+
   return NextResponse.json(
     {
-      booking,
+      booking: bookingRowToRequest(booking),
+      redirectTo,
       message:
         "Thanks! Your request has been received. We will text you shortly to confirm your Cane Bay route day and final price.",
     },
     { status: 201 },
   );
-}
-
-function cleanString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function normalizeBinCount(value: unknown) {
-  const numberValue = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(numberValue) ? Math.max(1, Math.floor(numberValue)) : 1;
-}
-
-function normalizeFrequency(value: unknown): ServiceFrequency {
-  return validFrequencies.includes(value as ServiceFrequency)
-    ? (value as ServiceFrequency)
-    : "one_time";
-}
-
-function normalizeScheduling(value: unknown): SchedulingPreference {
-  return validScheduling.includes(value as SchedulingPreference)
-    ? (value as SchedulingPreference)
-    : "next_available_route_day";
 }
